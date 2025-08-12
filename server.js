@@ -266,8 +266,24 @@ app.post('/upload-and-generate-qr', upload.single('file'), async (req, res) => {
         materialUrl = parsedResult.url || (parsedResult.data && parsedResult.data.url) || '';
         
         if (materialUrl) {
-          // 生成真实的深度链接
-          deepLink = `xhsdiscover://creation?materialUrl=${encodeURIComponent(materialUrl)}`;
+          // 为真实上传生成跳转页面
+          const realFileId = 'real_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+          tempFiles.set(realFileId, {
+            buffer: req.file.buffer,
+            originalname: req.file.originalname,
+            mimetype: req.file.mimetype,
+            size: req.file.size,
+            name: fileName,
+            uploadTime: Date.now(),
+            realMaterialUrl: materialUrl // 存储真实的materialUrl
+          });
+
+          // 5分钟后自动清理
+          setTimeout(() => {
+            tempFiles.delete(realFileId);
+          }, 5 * 60 * 1000);
+
+          deepLink = `${process.env.BASE_URL || 'http://localhost:3000'}/xhs-jump/${realFileId}`;
         } else {
           throw new Error('小红书API未返回有效的materialUrl');
         }
@@ -295,7 +311,9 @@ app.post('/upload-and-generate-qr', upload.single('file'), async (req, res) => {
 
         // 使用跳转页面URL而不是直接的数据URL
         materialUrl = `${process.env.BASE_URL || 'http://localhost:3000'}/material/${fileId}`;
-        deepLink = `xhsdiscover://creation?materialUrl=${encodeURIComponent(materialUrl)}`;
+        
+        // 生成跳转页面，而不是直接的深度链接
+        deepLink = `${process.env.BASE_URL || 'http://localhost:3000'}/xhs-jump/${fileId}`;
       }
     } else {
       // 演示模式 - 未配置API密钥
@@ -319,7 +337,9 @@ app.post('/upload-and-generate-qr', upload.single('file'), async (req, res) => {
 
       // 使用跳转页面URL而不是直接的数据URL
       materialUrl = `${process.env.BASE_URL || 'http://localhost:3000'}/material/${fileId}`;
-      deepLink = `xhsdiscover://creation?materialUrl=${encodeURIComponent(materialUrl)}`;
+      
+      // 生成跳转页面，而不是直接的深度链接
+      deepLink = `${process.env.BASE_URL || 'http://localhost:3000'}/xhs-jump/${fileId}`;
     }
 
     // 生成二维码
@@ -386,6 +406,202 @@ app.get('/material/:fileId', async (req, res) => {
       success: false,
       error: error.message
     });
+  }
+});
+
+// 小红书跳转页面 - 多种深度链接尝试
+app.get('/xhs-jump/:fileId', async (req, res) => {
+  try {
+    const { fileId } = req.params;
+    
+    // 从临时存储中获取文件信息
+    const fileInfo = tempFiles.get(fileId);
+    
+    if (!fileInfo) {
+      return res.status(404).send(`
+        <div style="text-align: center; padding: 50px; font-family: Arial, sans-serif;">
+          <h2>❌ 文件不存在或已过期</h2>
+          <p>该文件可能已被清理或链接已过期（5分钟有效期）</p>
+          <p><a href="/">返回上传页面</a></p>
+        </div>
+      `);
+    }
+
+    // 确定materialUrl
+    let materialUrl;
+    if (fileInfo.realMaterialUrl) {
+      // 真实上传的情况
+      materialUrl = fileInfo.realMaterialUrl;
+    } else {
+      // 演示模式
+      materialUrl = `${process.env.BASE_URL || 'http://localhost:3000'}/material/${fileId}`;
+    }
+
+    console.log('准备跳转到小红书:', {
+      fileId,
+      originalname: fileInfo.originalname,
+      materialUrl: materialUrl
+    });
+
+    // 小红书APP相关链接
+    const xhsAppStoreUrl = 'https://apps.apple.com/cn/app/%E5%B0%8F%E7%BA%A2%E4%B9%A6/id741292507';
+    const xhsWebUrl = 'https://www.xiaohongshu.com';
+    
+    // 尝试的深度链接格式
+    const deepLinks = [
+      `xhsdiscover://`,
+      `xiaohongshu://`,
+      `xhs://`,
+      xhsWebUrl,
+    ];
+
+    const fallbackStore = 'https://apps.apple.com/cn/app/%E5%B0%8F%E7%BA%A2%E4%B9%A6/id741292507';
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.end(`<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>跳转到小红书发布页面</title>
+  <style>
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
+      padding: 24px; 
+      text-align: center;
+      background: linear-gradient(135deg, #ff2442 0%, #ff6b8a 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .container {
+      background: white;
+      border-radius: 20px;
+      padding: 40px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.1);
+      max-width: 500px;
+    }
+    .success-icon { font-size: 64px; margin-bottom: 20px; }
+    h1 { color: #ff2442; margin-bottom: 15px; }
+    .file-info {
+      background: #f8f9fa;
+      border-radius: 10px;
+      padding: 20px;
+      margin: 20px 0;
+      text-align: left;
+    }
+    .file-info h3 { margin-top: 0; color: #333; }
+    .file-info p { margin: 5px 0; color: #666; font-size: 14px; }
+    .preview-img {
+      max-width: 200px;
+      max-height: 200px;
+      border-radius: 8px;
+      margin: 15px 0;
+    }
+    a.btn { 
+      background: #ff2442; 
+      color: #fff; 
+      padding: 15px 30px; 
+      border-radius: 25px; 
+      text-decoration: none; 
+      display: inline-block;
+      font-weight: bold;
+      margin: 10px;
+      text-decoration: none;
+    }
+    .tips { color: #666; margin-top: 20px; font-size: 14px; line-height: 1.6; }
+    .try-links {
+      background: #e3f2fd;
+      border: 1px solid #90caf9;
+      border-radius: 8px;
+      padding: 15px;
+      margin: 15px 0;
+      text-align: left;
+    }
+    .try-links h4 { margin-top: 0; color: #1565c0; }
+    .try-links a { 
+      display: block; 
+      color: #1565c0; 
+      margin: 5px 0; 
+      padding: 8px;
+      background: #f3f4f6;
+      border-radius: 5px;
+      text-decoration: none;
+      font-size: 12px;
+      word-break: break-all;
+    }
+  </style>
+  <script>
+    function manualTry(link) {
+      // 尝试打开深度链接
+      window.location.href = link;
+      
+      // 如果3秒后还在当前页面，说明没有安装APP，显示提示
+      setTimeout(() => {
+        if (!document.hidden) {
+          alert('似乎没有安装小红书APP，请下载后重试');
+        }
+      }, 3000);
+    }
+    
+    // 自动尝试打开小红书APP
+    window.addEventListener('load', function(){
+      console.log('页面加载完成');
+      // 给用户2秒时间查看页面内容
+      setTimeout(() => {
+        console.log('尝试打开小红书APP...');
+        manualTry('xhsdiscover://');
+      }, 2000);
+    });
+  </script>
+</head>
+<body>
+  <div class="container">
+    <div class="success-icon">📱</div>
+    <h1>正在打开小红书</h1>
+    
+    <div class="file-info">
+      <h3>📁 文件信息</h3>
+      <p><strong>文件名：</strong>${fileInfo.originalname}</p>
+      <p><strong>文件大小：</strong>${(fileInfo.size / 1024).toFixed(1)} KB</p>
+      <p><strong>文件类型：</strong>${fileInfo.mimetype}</p>
+      ${fileInfo.mimetype.startsWith('image/') ? 
+        `<img src="/material/${fileId}" alt="预览" class="preview-img">` : 
+        '<p>📹 视频文件已处理</p>'
+      }
+    </div>
+    
+    <div style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px; padding: 20px; margin: 20px 0; color: #856404;">
+      <h3 style="margin-top: 0;">📋 手动操作指南</h3>
+      <p><strong>由于小红书APP的限制，无法直接跳转到发布页面，请按以下步骤操作：</strong></p>
+      <ol style="text-align: left; margin-left: 20px; line-height: 1.8;">
+        <li><strong>保存上方图片</strong> - 长按图片保存到相册</li>
+        <li><strong>打开小红书APP</strong> - 点击下方按钮或手动打开</li>
+        <li><strong>开始发布</strong> - 点击底部"+"号按钮</li>
+        <li><strong>选择图片</strong> - 从相册中选择刚保存的图片</li>
+        <li><strong>编辑发布</strong> - 添加标题和内容后发布</li>
+      </ol>
+    </div>
+    
+    <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+      <a class="btn" href="xhsdiscover://" onclick="manualTry('xhsdiscover://')">🚀 打开小红书APP</a>
+      <a class="btn" href="${xhsAppStoreUrl}" style="background: #28a745;">📲 下载小红书</a>
+    </div>
+    
+    <div style="background: #e8f5e8; border-left: 4px solid #28a745; padding: 15px; margin: 20px 0; text-align: left;">
+      <strong>💡 提示：</strong><br>
+      • 图片已处理完成，可直接保存使用<br>
+      • 建议在WiFi环境下操作以节省流量<br>
+      • 如需帮助，请联系技术支持
+    </div>
+  </div>
+</body>
+</html>`);
+
+  } catch (error) {
+    console.error('跳转处理失败:', error);
+    res.status(500).send(`处理失败: ${error.message}`);
   }
 });
 
