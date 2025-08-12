@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>XHS API 测试</title>
+    <title>小红书快传 - 扫码发布</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -77,7 +77,8 @@
 </head>
 <body>
     <div class="container">
-        <h1>小红书 API 测试工具</h1>
+        <h1>📱 小红书快传</h1>
+        <p style="text-align: center; color: #666; margin-bottom: 30px;">选择图片，生成二维码，扫码发布到小红书</p>
         
         <form id="testForm">
             <div class="form-group">
@@ -168,8 +169,6 @@
         }
 
         // 生成二维码功能
-        let selectedFile = null;
-        
         async function generateQRCode() {
             const name = document.getElementById('name').value;
             const fileInput = document.getElementById('fileUpload');
@@ -186,61 +185,64 @@
             const qrInfo = document.getElementById('qrInfo');
             
             try {
-                qrBtn.textContent = '生成中...';
+                qrBtn.textContent = '上传中...';
                 qrBtn.disabled = true;
                 
-                // 先预上传文件获取临时ID
+                // 上传文件到小红书并生成二维码
                 const formData = new FormData();
                 formData.append('file', file);
                 formData.append('name', name || file.name);
                 
-                // 调用预上传接口获取文件ID
-                const uploadResponse = await fetch('/pre-upload', {
+                // 调用新的上传并生成二维码接口
+                const response = await fetch('/upload-and-generate-qr', {
                     method: 'POST',
                     body: formData
                 });
                 
-                const uploadResult = await uploadResponse.json();
+                const result = await response.json();
                 
-                if (!uploadResult.success) {
-                    throw new Error(uploadResult.error || '文件上传失败');
+                if (!result.success) {
+                    throw new Error(result.error || '上传失败');
                 }
                 
-                // 构造跳转URL
-                const jumpUrl = `${window.location.origin}/jump/${uploadResult.fileId}`;
+                // 显示二维码
+                qrContainer.innerHTML = `<img src="${result.qrCode}" alt="小红书二维码" style="width: 200px; height: 200px;">`;
                 
-                // 生成二维码
-                const qrResponse = await fetch(`/generate-qr?url=${encodeURIComponent(jumpUrl)}&size=200`);
-                const qrResult = await qrResponse.json();
+                // 显示信息
+                const statusText = result.isDemo ? '🧪 演示模式' : '✅ 真实上传';
+                const modeNote = result.isDemo ? 
+                    '<br><small>💡 配置API密钥后可实现真实上传到小红书</small>' : 
+                    '<br><small>✅ 已成功上传到小红书服务器</small>';
                 
-                if (qrResult.success) {
-                    // 显示二维码
-                    qrContainer.innerHTML = `<img src="${qrResult.qrCode}" alt="二维码" style="width: 200px; height: 200px;">`;
+                qrInfo.innerHTML = `
+                    <div style="background: ${result.isDemo ? '#fff3cd' : '#d1ecf1'}; border: 1px solid ${result.isDemo ? '#ffeaa7' : '#bee5eb'}; border-radius: 8px; padding: 15px; margin-bottom: 15px;">
+                        <strong>${statusText}</strong>${modeNote}
+                    </div>
                     
-                    // 显示信息
-                    qrInfo.innerHTML = `
-                        <strong>📁 文件信息：</strong><br>
-                        文件名：${uploadResult.fileInfo.originalname}<br>
-                        大小：${(uploadResult.fileInfo.size / 1024).toFixed(1)} KB<br>
-                        类型：${uploadResult.fileInfo.mimetype}<br>
-                        文件ID：${uploadResult.fileId}<br><br>
-                        <strong>🔗 跳转链接：</strong><br>
-                        <a href="${jumpUrl}" target="_blank" style="color: #1565c0; word-break: break-all;">${jumpUrl}</a><br><br>
-                        <strong>💡 使用方法：</strong><br>
-                        1. 用手机扫描上方二维码<br>
-                        2. 自动跳转到小红书APP发布页面<br>
-                        3. 图片已预处理，可直接发布<br>
-                        <strong>⏰ 注意：</strong>二维码有效期5分钟
-                    `;
+                    <strong>📁 文件信息：</strong><br>
+                    文件名：${result.fileInfo.originalname}<br>
+                    大小：${(result.fileInfo.size / 1024).toFixed(1)} KB<br>
+                    类型：${result.fileInfo.mimetype}<br>
+                    素材类型：${result.fileInfo.type}<br><br>
                     
-                    // 显示二维码区域
-                    qrSection.style.display = 'block';
+                    <strong>📱 使用方法：</strong><br>
+                    <div style="background: #e8f5e8; border-left: 4px solid #28a745; padding: 12px; margin: 10px 0;">
+                        1. <strong>打开小红书APP</strong><br>
+                        2. <strong>点击底部"+"按钮</strong><br>
+                        3. <strong>选择"扫一扫"功能</strong><br>
+                        4. <strong>扫描上方二维码</strong><br>
+                        5. <strong>自动跳转到发布页面，图片已填充</strong>
+                    </div>
                     
-                    // 滚动到二维码区域
-                    qrSection.scrollIntoView({ behavior: 'smooth' });
-                } else {
-                    throw new Error(qrResult.error || '生成二维码失败');
-                }
+                    <strong>🔗 深度链接：</strong><br>
+                    <code style="background: #f8f9fa; padding: 5px; border-radius: 3px; font-size: 12px; word-break: break-all;">${result.deepLink}</code>
+                `;
+                
+                // 显示二维码区域
+                qrSection.style.display = 'block';
+                
+                // 滚动到二维码区域
+                qrSection.scrollIntoView({ behavior: 'smooth' });
                 
             } catch (error) {
                 console.error('生成二维码失败:', error);
