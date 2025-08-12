@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XHS API 测试</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #ff2442;
+            text-align: center;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, select, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            box-sizing: border-box;
+        }
+        textarea {
+            height: 100px;
+            resize: vertical;
+        }
+        button {
+            background: #ff2442;
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            width: 100%;
+        }
+        button:hover {
+            background: #e01e38;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>小红书 API 测试工具</h1>
+        
+        <form id="testForm">
+            <div class="form-group">
+                <label for="name">素材名称:</label>
+                <input type="text" id="name" name="name" value="测试图片" placeholder="素材名称">
+            </div>
+            
+            <div class="form-group">
+                <label for="type">素材类型:</label>
+                <select id="type" name="type">
+                    <option value="IMAGE">IMAGE</option>
+                    <option value="VIDEO" selected>VIDEO</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="fileUpload">选择图片/视频文件:</label>
+                <input type="file" id="fileUpload" accept="image/*,video/*" onchange="handleFileSelect(this)">
+                <small style="color: #666;">选择文件后会自动转换为base64格式</small>
+            </div>
+            
+            <div class="form-group">
+                <label for="materialContent">素材内容 (base64数组):</label>
+                <textarea id="materialContent" name="materialContent" placeholder='自动生成或手动输入 ["base64编码内容"]'>["string"]</textarea>
+            </div>
+            
+            <button type="submit">测试上传</button>
+        </form>
+        
+        <div id="result" style="display:none;"></div>
+    </div>
+
+    <script>
+        // 处理文件选择和转换为base64
+        function handleFileSelect(input) {
+            const file = input.files[0];
+            if (!file) return;
+            
+            // 根据文件类型自动设置type
+            const typeSelect = document.getElementById('type');
+            if (file.type.startsWith('image/')) {
+                typeSelect.value = 'IMAGE';
+            } else if (file.type.startsWith('video/')) {
+                typeSelect.value = 'VIDEO';
+            }
+            
+            // 设置文件名
+            const nameInput = document.getElementById('name');
+            if (nameInput.value === '测试图片' || nameInput.value === '') {
+                nameInput.value = file.name;
+            }
+            
+            // 转换为base64
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                // 移除data:image/png;base64,前缀，只保留base64编码部分
+                const base64 = e.target.result.split(',')[1];
+                const materialContentTextarea = document.getElementById('materialContent');
+                materialContentTextarea.value = JSON.stringify([base64]);
+                
+                // 显示文件信息
+                console.log('文件转换完成:', {
+                    name: file.name,
+                    size: file.size,
+                    type: file.type,
+                    base64Length: base64.length
+                });
+            };
+            reader.readAsDataURL(file);
+        }
+
+        document.getElementById('testForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const resultDiv = document.getElementById('result');
+            const button = document.querySelector('button');
+            
+            button.disabled = true;
+            button.textContent = '上传中...';
+            
+            try {
+                const formData = new FormData(e.target);
+                const data = {
+                    name: formData.get('name'),
+                    type: formData.get('type'),
+                    materialContent: JSON.parse(formData.get('materialContent'))
+                };
+                
+                const response = await fetch('/test-upload', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                
+                resultDiv.style.display = 'block';
+                resultDiv.className = 'result ' + (result.success ? 'success' : 'error');
+                resultDiv.textContent = JSON.stringify(result, null, 2);
+                
+            } catch (error) {
+                resultDiv.style.display = 'block';
+                resultDiv.className = 'result error';
+                resultDiv.textContent = '请求失败: ' + error.message;
+            }
+            
+            button.disabled = false;
+            button.textContent = '测试上传';
+        });
+    </script>
+</body>
+</html>

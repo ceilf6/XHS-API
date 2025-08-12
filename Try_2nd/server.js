@@ -4,6 +4,8 @@ import crypto from 'crypto';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
+import fetch from 'node-fetch';
+import multer from 'multer';
 
 dotenv.config();
 
@@ -14,6 +16,12 @@ const app = express();
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
+
+// 配置multer用于文件上传
+const upload = multer({ 
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 } // 20MB限制
+});
 
 const XHS_API_ENDPOINT = 'https://ark.xiaohongshu.com/ark/open_api/v3/common_controller';
 
@@ -121,6 +129,145 @@ app.get('/r', async (req, res) => {
   } catch (error) {
     const message = error?.response?.data || error?.message || 'Unknown error';
     res.status(500).send(`上传或跳转失败: ${typeof message === 'string' ? message : JSON.stringify(message)}`);
+  }
+});
+
+// 测试端点 - 直接使用原始API调用，不需要配置env
+app.post('/test-upload', async (req, res) => {
+  try {
+    const { name, type, materialContent } = req.body;
+    
+    // 使用你提供的示例代码
+    const myHeaders = {
+      "Content-Type": "application/json;charset=utf-8"
+    };
+
+    const raw = JSON.stringify({
+      "name": name || "测试图片",
+      "type": type || "VIDEO", 
+      "materialContent": materialContent || ["string"]
+    });
+
+    const requestOptions = {
+      method: 'POST',
+      headers: myHeaders,
+      body: raw,
+      redirect: 'follow'
+    };
+
+    console.log('发送请求到 XHS API...');
+    console.log('请求体:', raw);
+
+    const response = await fetch("https://ark.xiaohongshu.com/ark/open_api/v3/common_controller", requestOptions);
+    const result = await response.text();
+    
+    console.log('XHS API 响应:', result);
+
+    // 尝试解析为JSON，如果失败则返回原始文本
+    let parsedResult;
+    try {
+      parsedResult = JSON.parse(result);
+    } catch (e) {
+      parsedResult = { rawResponse: result };
+    }
+
+    res.json({
+      success: true,
+      status: response.status,
+      statusText: response.statusText,
+      data: parsedResult
+    });
+
+  } catch (error) {
+    console.error('测试上传失败:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      details: error.toString()
+    });
+  }
+});
+
+// 直接文件上传接口
+app.post('/upload-file', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: '没有上传文件' });
+    }
+
+    const { name, type } = req.body;
+    
+    // 将文件转换为base64
+    const base64Content = req.file.buffer.toString('base64');
+    
+    // 自动判断文件类型
+    let materialType = type;
+    if (!materialType) {
+      if (req.file.mimetype.startsWith('image/')) {
+        materialType = 'IMAGE';
+      } else if (req.file.mimetype.startsWith('video/')) {
+        materialType = 'VIDEO';
+      } else {
+        materialType = 'IMAGE'; // 默认为图片
+      }
+    }
+
+    const myHeaders = {
+      "Content-Type": "application/json;charset=utf-8"
+    };
+
+    const raw = JSON.stringify({
+      "name": name || req.file.originalname || "上传文件",
+      "type": materialType,
+      "materialContent": [base64Content]
+    });
+
+    console.log('上传文件信息:', {
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      size: req.file.size,
+      type: materialType
+    });
+
+    const requestOptions = {
+      method: 'POST',
+      headers: myHeaders,
+      body: raw,
+      redirect: 'follow'
+    };
+
+    const response = await fetch("https://ark.xiaohongshu.com/ark/open_api/v3/common_controller", requestOptions);
+    const result = await response.text();
+    
+    console.log('XHS API 响应:', result);
+
+    let parsedResult;
+    try {
+      parsedResult = JSON.parse(result);
+    } catch (e) {
+      parsedResult = { rawResponse: result };
+    }
+
+    res.json({
+      success: true,
+      status: response.status,
+      statusText: response.statusText,
+      fileInfo: {
+        originalname: req.file.originalname,
+        mimetype: req.file.mimetype,
+        size: req.file.size,
+        type: materialType
+      },
+      data: parsedResult
+    });
+
+  } catch (error) {
+    console.error('文件上传失败:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      details: error.toString()
+    });
   }
 });
 
