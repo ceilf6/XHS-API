@@ -1,6 +1,7 @@
 小红书开发者平台不像其他第三方平台的开发者平台统一，它分为电商平台、小程序平台、分享平台等等，我们目前需要的只是分享平台
 
 >详情 https://agora.xiaohongshu.com/doc/js
+>参考资料（上传文件，和我们上传海报图片调用的参数不一样） https://blog.csdn.net/u012878270/article/details/141420459
 
 在我完成申请之后（目前申请结果还没反馈）会获得 appKey(即appID) 和 appSecret
 接着引入JS API
